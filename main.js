@@ -1,4 +1,4 @@
 const main = () => {
-  console.log('Hello - BEllo');
+  console.log('Hello - Bello', new Date().toUTCString());
 };
 main();

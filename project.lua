@@ -2,11 +2,12 @@
   Todo ::
   - [X] Lua auto formatting
   - [X] Make command selectable
-  - [ ] Able to show ?hidden window
+  - [X] Able to show ?hidden window
+  - [X] Return previous & Bind <F5>
   - [ ] Store commands on separate window
-    - [ ] Add command
-    - [ ] Remove command
-  - [ ] Keybinding for <F-5> ??
+    - [X] Add command
+      - [ ] Add Gui
+    - [ ] (NOT PRIORITY) Remove command
 --]]
 
 local pickers = require'telescope.pickers'
@@ -15,9 +16,21 @@ local actions = require'telescope.actions'
 local action_state = require'telescope.actions.state'
 local conf = require('telescope.config').values
 
--- local buffer_id = buffer_id
 local buffer_id = -1
-local command_name = 'MyStuff'
+local last_command_index = -1
+
+local function get_command_name(input)
+	return 'HavasConfig' .. input
+end
+
+local COMMAND_LIST = get_command_name('List')
+local COMMAND_SHOW_LAST = get_command_name('Last')
+local COMMAND_RERUN_PREVIOUS = get_command_name('Rerun')
+local COMMAND_ADD_COMMAND = get_command_name('Add')
+local COMMAND_ADD_COMMAND_2 = get_command_name('AddCmd')
+
+local next_id = 1
+
 local available_commands = { {
 	'Run main.js ',
 	command = { 'node', 'main.js' },
@@ -26,7 +39,18 @@ local available_commands = { {
 	command = { 'ts-node', 'main.js' },
 } }
 
-local function createBuffer()
+local function add_command(name, command)
+	local x = {
+		name,
+		id = next_id,
+		command = command,
+	}
+	print(vim.inspect(x))
+	table.insert(available_commands, x)
+	next_id = next_id + 1
+end
+
+local function createBufferIfNotExists()
 	if not buffer_id or buffer_id < 0 then
 		vim.cmd':new +setl\\ buftype=nofile'
 		buffer_id = vim.api.nvim_get_current_buf()
@@ -34,6 +58,7 @@ local function createBuffer()
 end
 
 local function execute_command(command)
+	createBufferIfNotExists()
 	vim.fn.jobstart(command, {
 		stdout_buffered = true,
 		on_stdout = function(_, data)
@@ -42,7 +67,11 @@ local function execute_command(command)
 	})
 end
 
-local colors = function(opts)
+local function execute_by_index(index)
+	execute_command(available_commands[index].command)
+end
+
+local pick_command = function(opts)
 	opts = opts or require('telescope.themes').get_dropdown{}
 	pickers.new(opts, {
 		finder = finders.new_table{
@@ -55,14 +84,15 @@ local colors = function(opts)
 				}
 			end,
 		},
-		prompt_title = 'colors',
+		prompt_title = 'Command Configs',
 		sorter = conf.generic_sorter(opts),
 		attach_mappings = function(prompt_bufnr, _)
 			actions.select_default:replace(function()
 				actions.close(prompt_bufnr)
 				local selection = action_state.get_selected_entry()
-				createBuffer()
+				print(vim.inspect(selection))
 				execute_command(selection.value.command)
+				last_command_index = selection.index
 			end)
 			return true
 		end,
@@ -70,16 +100,63 @@ local colors = function(opts)
 end
 
 vim.api.nvim_create_user_command(
-	command_name,
+	COMMAND_LIST,
 	function(_)
-		colors()
+		pick_command()
+	end,
+	{}
+)
+
+vim.api.nvim_create_user_command(
+	COMMAND_SHOW_LAST,
+	function(_)
+		local command_to_run = ':sbuffer ' .. buffer_id
+		vim.cmd(command_to_run)
+	end,
+	{}
+)
+
+vim.api.nvim_create_user_command(
+	COMMAND_RERUN_PREVIOUS,
+	function(_)
+		if last_command_index < 0 then
+			pick_command()
+		else
+			execute_by_index(last_command_index)
+		end
+	end,
+	{}
+)
+
+function log(stmt)
+	print(vim.inspect(stmt))
+end
+
+vim.api.nvim_create_user_command(
+	COMMAND_ADD_COMMAND,
+	function(data)
+		local name = data.fargs[1]
+		table.remove(data.fargs, 1)
+
+		-- data.fargs will be the remaining options
+		add_command(name, data.fargs)
+	end,
+	{ nargs = '*' }
+)
+
+vim.api.nvim_create_user_command(
+	COMMAND_ADD_COMMAND_2,
+	function(_)
+		local name = vim.fn.input'Command name: '
+		local xname = vim.fn.input'Command script: '
+		log({ name, xname })
 	end,
 	{}
 )
 
 vim.cmd'noremap ő :so<CR>'
--- vim.cmd':MyStuff'
-
--- to execute the function
--- colors()
--- colors(require('telescope.themes').get_dropdown{})
+vim.cmd('noremap ú :' .. COMMAND_LIST .. '<cr>')
+vim.cmd('noremap <leader>p :' .. COMMAND_SHOW_LAST .. '<cr>')
+vim.cmd('noremap <F5> :' .. COMMAND_RERUN_PREVIOUS .. '<cr>')
+vim.cmd('noremap <F3> :' .. COMMAND_ADD_COMMAND .. ' ShowDate date -u <cr>')
+vim.cmd('noremap <F4> :' .. COMMAND_ADD_COMMAND_2 .. '<cr>')
